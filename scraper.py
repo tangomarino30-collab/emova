@@ -47,7 +47,7 @@ def revisar_web():
                     print(f"{nombre_linea}: {estado}")
                     
                     # Si el estado cambia y NO es "Normal", envía alerta
-                    if estado != "Normal":
+                    if estado != "Normal" or True:
                         enviar_telegram(f"⚠️ ¡Alerta {nombre_linea}! Estado actual: {estado}")
                         
     except Exception as e:
