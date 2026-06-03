@@ -2,10 +2,8 @@ import os
 import requests
 from bs4 import BeautifulSoup
 
-# Configuración de la web
 URL = "https://emova.com.ar"
 
-# El robot de GitHub le pasará tus claves reales de forma invisible aquí:
 TOKEN_TELEGRAM = os.environ.get("TELEGRAM_TOKEN")
 CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
@@ -14,7 +12,6 @@ def enviar_telegram(mensaje):
         print("Faltan las credenciales de Telegram en los Secrets.")
         return
         
-    # CORRECCIÓN 1: La URL oficial de la API de Telegram con la palabra /bot
     url_api = f"https://telegram.org{TOKEN_TELEGRAM}/sendMessage"
     payload = {
         "chat_id": CHAT_ID,
@@ -28,9 +25,8 @@ def enviar_telegram(mensaje):
 
 def revisar_web():
     try:
-        # CORRECCIÓN 2: Disfrazamos el robot como un navegador para saltar el bloqueo de Emova
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0"
         }
         
         respuesta = requests.get(URL, headers=headers, timeout=10)
@@ -38,27 +34,34 @@ def revisar_web():
         
         sofá = BeautifulSoup(respuesta.text, 'html.parser')
         
-        # Encontramos todos los bloques de subtes usando la clase de tu HTML
-        bloques = sofá.find_all(class_="itemLinea")
-        print(f"Cantidad de bloques encontrados: {len(bloques)}")
+        # Mapeo exacto de las imágenes fijas que subiste en tu HTML
+        lineas_monitorear = {
+            "Linea B": "past-b-60.png",
+            "Linea C": "past-c-60.png",
+            "Linea H": "past-h-60.png",
+            "Linea Premetro": "past-p-60.png"
+        }
         
-        # Filtramos solo las líneas que te interesan
-        lineas_interes = ["Linea B", "Linea C", "Linea H", "Linea Premetro"]
-        
-        for bloque in bloques:
-            img = bloque.find("img")
-            p_texto = bloque.find("p")
+        for nombre_linea, nombre_archivo in lineas_monitorear.items():
+            # Buscamos la etiqueta de la imagen que contenga el nombre del archivo
+            img_subte = sofá.find("img", src=lambda x: x and nombre_archivo in x)
             
-            if img and p_texto:
-                nombre_linea = img.get("alt", "").strip()
-                estado = p_texto.text.strip()
+            if img_subte:
+                # Buscamos el párrafo de texto que está dentro de su mismo bloque contenedor
+                # Primero intentamos al lado, y si no en todo su contenedor padre
+                p_texto = img_subte.find_next_sibling("p") or img_subte.parent.find("p")
                 
-                if nombre_linea in lineas_interes:
-                    print(f"{nombre_linea}: {estado}")
+                if p_texto:
+                    estado = p_texto.text.strip()
+                    print(f"{nombre_linea} detectada -> Estado: {estado}")
                     
-                    # Con el 'or True' forzamos la prueba para que verifiques tu Telegram ya mismo
+                    # Con el 'or True' forzamos la prueba para verificar tu Telegram ya mismo
                     if estado != "Normal" or True:
                         enviar_telegram(f"⚠️ ¡Alerta {nombre_linea}! Estado actual: {estado}")
+                else:
+                    print(f"Se encontró la imagen de {nombre_linea} pero no su texto <p>")
+            else:
+                print(f"No se pudo encontrar la imagen para la {nombre_linea} en el HTML")
                         
     except Exception as e:
         print(f"Error al realizar el scraping: {e}")
