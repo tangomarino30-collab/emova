@@ -30,13 +30,25 @@ def enviar_telegram(mensaje):
 def revisar_web():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
+
+        # Simulamos un navegador humano real
+        context = browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            viewport={"width": 1280, "height": 720},
+            locale="es-AR",
+            timezone_id="America/Argentina/Buenos_Aires",
+        )
+
+        page = context.new_page()
+
+        # Ocultamos que es un navegador automatizado
+        page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
 
         try:
             print(f"Abriendo {URL}...")
-            page.goto(URL, timeout=30000)
+            page.goto(URL, wait_until="networkidle", timeout=60000)
 
-            # Espera a que aparezca al menos un bloque itemLinea con contenido
+            # Esperamos el contenido dinámico
             page.wait_for_selector(".itemLinea p", timeout=30000)
 
             bloques = page.query_selector_all(".itemLinea")
@@ -47,8 +59,7 @@ def revisar_web():
                 p_texto = bloque.query_selector("p")
 
                 if img and p_texto:
-                    nombre_linea = img.get_attribute("alt") or ""
-                    nombre_linea = nombre_linea.strip()
+                    nombre_linea = (img.get_attribute("alt") or "").strip()
                     estado = p_texto.inner_text().strip()
 
                     if nombre_linea in LINEAS_INTERES:
