@@ -19,13 +19,12 @@ jobs:
           python-version: '3.11'
 
       - name: Instalar dependencias
-        run: |
-          pip install playwright requests
-          playwright install chromium
-          playwright install-deps chromium
+        run: pip install requests
 
       - name: Ejecutar scraper
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GCBA_CLIENT_ID: ${{ secrets.GCBA_CLIENT_ID }}
+          GCBA_CLIENT_SECRET: ${{ secrets.GCBA_CLIENT_SECRET }}
         run: python scraper.py
