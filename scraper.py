@@ -1,18 +1,21 @@
 import os
-import requests
-from bs4 import BeautifulSoup
+from playwright.sync_api import sync_playwright
 
+# Configuración
 URL = "https://emova.com.ar"
-
 TOKEN_TELEGRAM = os.environ.get("TELEGRAM_TOKEN")
 CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
+LINEAS_INTERES = ["Linea B", "Linea C", "Linea H", "Linea Premetro"]
+
+
 def enviar_telegram(mensaje):
+    import requests
     if not TOKEN_TELEGRAM or not CHAT_ID:
         print("Faltan las credenciales de Telegram en los Secrets.")
         return
-        
-    url_api = f"https://telegram.org{TOKEN_TELEGRAM}/sendMessage"
+
+    url_api = f"https://api.telegram.org/bot{TOKEN_TELEGRAM}/sendMessage"
     payload = {
         "chat_id": CHAT_ID,
         "text": mensaje
@@ -23,48 +26,42 @@ def enviar_telegram(mensaje):
     except Exception as e:
         print(f"Error al enviar Telegram: {e}")
 
+
 def revisar_web():
-    try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0"
-        }
-        
-        respuesta = requests.get(URL, headers=headers, timeout=10)
-        print(f"Conexión con Emova: Código {respuesta.status_code}")
-        
-        sofá = BeautifulSoup(respuesta.text, 'html.parser')
-        
-        # Mapeo exacto de las imágenes fijas que subiste en tu HTML
-        lineas_monitorear = {
-            "Linea B": "past-b-60.png",
-            "Linea C": "past-c-60.png",
-            "Linea H": "past-h-60.png",
-            "Linea Premetro": "past-p-60.png"
-        }
-        
-        for nombre_linea, nombre_archivo in lineas_monitorear.items():
-            # Buscamos la etiqueta de la imagen que contenga el nombre del archivo
-            img_subte = sofá.find("img", src=lambda x: x and nombre_archivo in x)
-            
-            if img_subte:
-                # Buscamos el párrafo de texto que está dentro de su mismo bloque contenedor
-                # Primero intentamos al lado, y si no en todo su contenedor padre
-                p_texto = img_subte.find_next_sibling("p") or img_subte.parent.find("p")
-                
-                if p_texto:
-                    estado = p_texto.text.strip()
-                    print(f"{nombre_linea} detectada -> Estado: {estado}")
-                    
-                    # Con el 'or True' forzamos la prueba para verificar tu Telegram ya mismo
-                    if estado != "Normal" or True:
-                        enviar_telegram(f"⚠️ ¡Alerta {nombre_linea}! Estado actual: {estado}")
-                else:
-                    print(f"Se encontró la imagen de {nombre_linea} pero no su texto <p>")
-            else:
-                print(f"No se pudo encontrar la imagen para la {nombre_linea} en el HTML")
-                        
-    except Exception as e:
-        print(f"Error al realizar el scraping: {e}")
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+
+        try:
+            print(f"Abriendo {URL}...")
+            page.goto(URL, timeout=30000)
+
+            # Espera a que aparezca al menos un bloque itemLinea con contenido
+            page.wait_for_selector(".itemLinea p", timeout=15000)
+
+            bloques = page.query_selector_all(".itemLinea")
+            print(f"Cantidad de bloques encontrados: {len(bloques)}")
+
+            for bloque in bloques:
+                img = bloque.query_selector("img")
+                p_texto = bloque.query_selector("p")
+
+                if img and p_texto:
+                    nombre_linea = img.get_attribute("alt") or ""
+                    nombre_linea = nombre_linea.strip()
+                    estado = p_texto.inner_text().strip()
+
+                    if nombre_linea in LINEAS_INTERES:
+                        print(f"{nombre_linea}: {estado}")
+
+                        if estado.lower() != "normal":
+                            enviar_telegram(f"⚠️ ¡Alerta {nombre_linea}! Estado actual: {estado}")
+
+        except Exception as e:
+            print(f"Error durante el scraping: {e}")
+        finally:
+            browser.close()
+
 
 if __name__ == "__main__":
     revisar_web()
