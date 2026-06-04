@@ -37,7 +37,7 @@ def revisar_web():
             page.goto(URL, timeout=30000)
 
             # Espera a que aparezca al menos un bloque itemLinea con contenido
-            page.wait_for_selector(".itemLinea p", timeout=15000)
+            page.wait_for_selector(".itemLinea p", timeout=30000)
 
             bloques = page.query_selector_all(".itemLinea")
             print(f"Cantidad de bloques encontrados: {len(bloques)}")
