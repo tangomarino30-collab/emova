@@ -1,78 +1,75 @@
 import os
-from playwright.sync_api import sync_playwright
+import requests
 
 # Configuración
-URL = "https://emova.com.ar"
+CLIENT_ID = os.environ.get("GCBA_CLIENT_ID")
+CLIENT_SECRET = os.environ.get("GCBA_CLIENT_SECRET")
 TOKEN_TELEGRAM = os.environ.get("TELEGRAM_TOKEN")
 CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
-LINEAS_INTERES = ["Linea B", "Linea C", "Linea H", "Linea Premetro"]
+LINEAS_INTERES = {"LineaB", "LineaC", "LineaH", "LineaP"}  # P = Premetro
+
+API_URL = (
+    "https://apitransporte.buenosaires.gob.ar/subtes/serviceAlerts"
+    f"?client_id={{CLIENT_ID}}&client_secret={{CLIENT_SECRET}}&json=1"
+)
 
 
 def enviar_telegram(mensaje):
-    import requests
     if not TOKEN_TELEGRAM or not CHAT_ID:
         print("Faltan las credenciales de Telegram en los Secrets.")
         return
-
     url_api = f"https://api.telegram.org/bot{TOKEN_TELEGRAM}/sendMessage"
-    payload = {
-        "chat_id": CHAT_ID,
-        "text": mensaje
-    }
     try:
-        r = requests.post(url_api, json=payload, timeout=10)
-        print(f"Resultado envío Telegram: {r.status_code}")
+        r = requests.post(url_api, json={"chat_id": CHAT_ID, "text": mensaje}, timeout=10)
+        print(f"Telegram: {r.status_code}")
     except Exception as e:
-        print(f"Error al enviar Telegram: {e}")
+        print(f"Error Telegram: {e}")
 
 
-def revisar_web():
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+def revisar_alertas():
+    if not CLIENT_ID or not CLIENT_SECRET:
+        print("Faltan las credenciales de la API GCBA en los Secrets.")
+        return
 
-        # Simulamos un navegador humano real
-        context = browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            viewport={"width": 1280, "height": 720},
-            locale="es-AR",
-            timezone_id="America/Argentina/Buenos_Aires",
-        )
+    url = (
+        f"https://apitransporte.buenosaires.gob.ar/subtes/serviceAlerts"
+        f"?client_id={CLIENT_ID}&client_secret={CLIENT_SECRET}&json=1"
+    )
 
-        page = context.new_page()
+    try:
+        r = requests.get(url, timeout=15)
+        print(f"API GCBA: {r.status_code}")
+        data = r.json()
 
-        # Ocultamos que es un navegador automatizado
-        page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+        entidades = data.get("entity", [])
+        print(f"Alertas encontradas: {len(entidades)}")
 
-        try:
-            print(f"Abriendo {URL}...")
-            page.goto(URL, wait_until="networkidle", timeout=60000)
+        lineas_alertadas = set()
 
-            # Esperamos el contenido dinámico
-            page.wait_for_selector(".itemLinea p", timeout=30000)
+        for entidad in entidades:
+            alerta = entidad.get("alert", {})
+            informed_entities = alerta.get("informed_entity", [])
+            descripcion = (
+                alerta.get("description_text", {})
+                .get("translation", [{}])[0]
+                .get("text", "Sin descripción")
+            )
 
-            bloques = page.query_selector_all(".itemLinea")
-            print(f"Cantidad de bloques encontrados: {len(bloques)}")
+            for ie in informed_entities:
+                route_id = ie.get("route_id", "")
+                if route_id in LINEAS_INTERES and route_id not in lineas_alertadas:
+                    lineas_alertadas.add(route_id)
+                    nombre = route_id.replace("Linea", "Línea ")
+                    print(f"Alerta {nombre}: {descripcion}")
+                    enviar_telegram(f"⚠️ ¡Alerta {nombre}!\n{descripcion}")
 
-            for bloque in bloques:
-                img = bloque.query_selector("img")
-                p_texto = bloque.query_selector("p")
+        if not lineas_alertadas:
+            print("Todas las líneas de interés funcionan con normalidad.")
 
-                if img and p_texto:
-                    nombre_linea = (img.get_attribute("alt") or "").strip()
-                    estado = p_texto.inner_text().strip()
-
-                    if nombre_linea in LINEAS_INTERES:
-                        print(f"{nombre_linea}: {estado}")
-
-                        if estado.lower() != "normal":
-                            enviar_telegram(f"⚠️ ¡Alerta {nombre_linea}! Estado actual: {estado}")
-
-        except Exception as e:
-            print(f"Error durante el scraping: {e}")
-        finally:
-            browser.close()
+    except Exception as e:
+        print(f"Error al consultar la API: {e}")
 
 
 if __name__ == "__main__":
-    revisar_web()
+    revisar_alertas()
