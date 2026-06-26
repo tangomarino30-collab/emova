@@ -1,1 +1,65 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Alertas de Subte</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e, #16213e);
+      color: white;
+      padding: 20px;
+      min-height: 100vh;
+    }
+    h1 { text-align: center; margin-bottom: 20px; color: #00b4d8; }
+    .alerta {
+      background: rgba(255,255,255,0.1);
+      border-radius: 10px;
+      padding: 15px;
+      margin-bottom: 15px;
+      border-left: 4px solid #00b4d8;
+    }
+    .linea { font-weight: bold; color: #00b4d8; font-size: 1.1em; }
+    .estado { margin-top: 5px; color: #ccc; }
+    #loading { text-align: center; font-size: 1.2em; }
+  </style>
+</head>
+<body>
+  <h1>🚇 Estado del Subte</h1>
+  <div id="loading">Cargando alertas...</div>
+  <div id="contenido"></div>
 
+  <script>
+    async function cargarAlertas() {
+      try {
+        const res = await fetch('/alertas');
+        const data = await res.json();
+        const contenido = document.getElementById("contenido");
+        document.getElementById("loading").style.display = "none";
+
+        const alertas = data.entity || [];
+        if (alertas.length === 0) {
+          contenido.innerHTML = "<p style='text-align:center'>✅ Sin alertas activas</p>";
+          return;
+        }
+
+        alertas.forEach(e => {
+          const alerta = e.alert;
+          const linea = alerta?.informed_entity?.[0]?.route_id || "Desconocida";
+          const texto = alerta?.header_text?.translation?.[0]?.text || "Sin descripción";
+          contenido.innerHTML += `
+            <div class="alerta">
+              <div class="linea">Línea ${linea}</div>
+              <div class="estado">${texto}</div>
+            </div>`;
+        });
+      } catch(e) {
+        document.getElementById("loading").textContent = "❌ Error: " + e.message;
+      }
+    }
+
+    cargarAlertas();
+  </script>
+</body>
+</html>
